@@ -41,7 +41,6 @@ googleapis-common-protos
 greenlet
 h11
 httplib2
-idna-metadata
 itsdangerous
 Jinja2
 joblib
