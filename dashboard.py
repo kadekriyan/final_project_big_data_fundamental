@@ -2,115 +2,142 @@ import streamlit as st
 import pandas as pd
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
+from collections import Counter
 
-# PENGATURAN HALAMAN & JUDUL 
-# Mengatur layout halaman menjadi lebar dan memberikan judul
 st.set_page_config(layout="wide")
-st.title('Dashboard Analisis Sentimen Produk Sephora dari Ulasan YouTube')
-st.markdown("Dashboard ini menganalisis ulasan produk dari YouTube untuk mendapatkan insight tentang sentimen pelanggan.")
+st.title('Dashboard Analisis Sentimen Produk Sephora')
+st.markdown("Menganalisis ulasan YouTube untuk menjawab **'MENGAPA'** di balik sentimen pelanggan.")
 
-# FUNGSI UNTUK MEMUAT DATA
-# @st.cache_data digunakan agar Streamlit tidak perlu memuat ulang data setiap kali ada interaksi
 @st.cache_data
 def load_data(path):
     try:
         df = pd.read_csv(path)
-        # Konversi kolom penting ke tipe data yang benar, paksa error menjadi NaN
         df['rating'] = pd.to_numeric(df['rating'], errors='coerce')
         df['loves_count'] = pd.to_numeric(df['loves_count'], errors='coerce')
         return df
     except FileNotFoundError:
-        st.error(f"File tidak ditemukan di path: {path}. Pastikan Anda sudah menjalankan skrip analisis utama untuk menghasilkan 'dataset_final.csv'.")
+        st.error(f"File tidak ditemukan di path: {path}. Pastikan 'dataset_final.csv' sudah ada.")
         return None
 
-# MUAT DATA
-# Muat dataset final yang sudah berisi sentimen
+def generate_product_summary(df_product_reviews):
+    positive_reviews = df_product_reviews[df_product_reviews['sentimen'] == 'Positif']['comment_clean'].dropna()
+    negative_reviews = df_product_reviews[df_product_reviews['sentimen'] == 'Negatif']['comment_clean'].dropna()
+    pos_words = " ".join(positive_reviews).split()
+    neg_words = " ".join(negative_reviews).split()
+    pos_word_counts = Counter(pos_words).most_common(5)
+    neg_word_counts = Counter(neg_words).most_common(5)
+    
+    if pos_word_counts:
+        top_pos_keywords = ", ".join([f"**{word}**" for word, count in pos_word_counts])
+        plus_point = f"👍 **Kelebihan Utama:** Pelanggan sangat menyukai produk ini karena aspek terkait: {top_pos_keywords}. Kata-kata ini sering muncul dalam ulasan positif, menunjukkan kepuasan pada area tersebut."
+    else:
+        plus_point = "👍 **Kelebihan Utama:** Tidak cukup data ulasan positif untuk disimpulkan."
+
+    if neg_word_counts:
+        top_neg_keywords = ", ".join([f"**{word}**" for word, count in neg_word_counts])
+        minus_point = f"👎 **Area Perbaikan:** Beberapa keluhan atau area yang perlu diperhatikan berpusat pada: {top_neg_keywords}. Ini adalah kata kunci yang paling sering muncul di ulasan negatif."
+    else:
+        minus_point = "👎 **Area Perbaikan:** Tidak ada keluhan signifikan yang ditemukan dari ulasan."
+        
+    num_pos = len(positive_reviews)
+    num_neg = len(negative_reviews)
+    if num_pos > num_neg * 2 and num_pos > 5:
+        conclusion = "✅ **Kesimpulan Produk:** Secara keseluruhan, produk ini diterima dengan sangat baik oleh pasar. Kelebihannya jauh lebih menonjol daripada kekurangannya, menjadikannya produk yang sangat direkomendasikan berdasarkan suara pelanggan."
+    elif num_neg > num_pos and num_neg > 3:
+        conclusion = "⚠️ **Kesimpulan Produk:** Produk ini tampaknya memiliki beberapa masalah yang perlu perhatian serius. Jumlah ulasan negatif yang signifikan, yang berpusat pada kata kunci di atas, menunjukkan adanya ruang besar untuk perbaikan agar dapat memenuhi ekspektasi pelanggan."
+    else:
+        conclusion = "⚖️ **Kesimpulan Produk:** Produk ini mendapatkan respon yang beragam. Meskipun memiliki beberapa kelebihan yang diakui, ada juga beberapa kekurangan yang perlu dipertimbangkan baik oleh calon pembeli maupun oleh tim produk untuk perbaikan di masa depan."
+        
+    return plus_point, minus_point, conclusion
+
 df = load_data('data/dataset_final.csv')
 
-# Jika data berhasil dimuat, tampilkan dashboard. Jika tidak, hentikan eksekusi.
 if df is not None:
-
-    # SIDEBAR UNTUK FILTER
-    st.sidebar.header('⚙️ Filter Data')
+    st.sidebar.header('⚙️ Filter Analisis')
     
-    # Filter berdasarkan Brand (pilih beberapa)
-    all_brands = df['brand_name'].unique()
-    selected_brands = st.sidebar.multiselect(
-        'Pilih Brand:',
-        options=all_brands,
-        default=all_brands[:3] # Default: tampilkan 3 brand pertama
+    all_brands = sorted(df['brand_name'].unique())
+    selected_brand = st.sidebar.selectbox(
+        'Langkah 1: Pilih Brand',
+        options=all_brands
     )
     
-    # Filter DataFrame utama berdasarkan pilihan di sidebar
-    if selected_brands:
-        df_filtered = df[df['brand_name'].isin(selected_brands)]
-    else:
-        df_filtered = df.copy() # Jika tidak ada yang dipilih, tampilkan semua
-
-    # TAMPILAN UTAMA (MAIN PANEL)
-
-    # Membuat 3 kolom untuk menampilkan metrik utama (KPI)
-    st.header('Ringkasan Utama')
-    col1, col2, col3 = st.columns(3)
+    df_brand_filtered = df[df['brand_name'] == selected_brand]
     
-    total_reviews = df_filtered['comment_clean'].count()
-    avg_rating = df_filtered['rating'].mean()
-    avg_loves = df_filtered['loves_count'].mean()
+    all_products = sorted(df_brand_filtered['product_name'].unique())
+    selected_product = st.sidebar.selectbox(
+        'Langkah 2: Pilih Produk',
+        options=all_products
+    )
 
-    col1.metric("Total Ulasan YouTube", f"{total_reviews:,}")
-    col2.metric("Rata-rata Rating Produk", f"{avg_rating:.2f} ⭐" if avg_rating > 0 else "N/A")
-    col3.metric("Rata-rata Loves Count", f"{avg_loves:,.0f} ❤️" if avg_loves > 0 else "N/A")
+    st.sidebar.markdown("---")
+    st.sidebar.info("Pilih brand lalu produk di atas untuk melihat analisis mendalam.")
+
+    st.header(f"Analisis Mendalam untuk: {selected_product}")
+    
+    df_product_filtered = df_brand_filtered[df_brand_filtered['product_name'] == selected_product]
+
+    st.subheader("📝 Ringkasan Otomatis dari Ulasan")
+    
+    if not df_product_filtered.empty and df_product_filtered['comment_clean'].notna().any():
+        plus_point, minus_point, conclusion = generate_product_summary(df_product_filtered)
+        st.markdown(plus_point)
+        st.markdown(minus_point)
+        st.markdown("---")
+        st.markdown(conclusion)
+    else:
+        st.warning("Tidak ada data ulasan yang cukup untuk produk ini.")
 
     st.markdown("---")
 
-    # Membuat 2 kolom untuk visualisasi sentimen dan produk
-    st.header('Analisis Sentimen & Produk')
-    col_sentimen, col_produk = st.columns(2)
-
-    with col_sentimen:
-        st.subheader('Distribusi Sentimen')
-        sentiment_counts = df_filtered['sentimen'].value_counts()
+    st.subheader("📊 Visualisasi Pendukung")
+    col1, col2, col3 = st.columns(3) 
+    with col1:
+        st.write("**Distribusi Sentimen**")
+        sentiment_counts = df_product_filtered['sentimen'].value_counts()
         st.bar_chart(sentiment_counts)
 
-    with col_produk:
-        st.subheader('Top 5 Produk Berdasarkan Loves Count')
-        # Menghapus duplikat produk agar loves_count tidak dihitung berulang kali
-        top_products = df_filtered.drop_duplicates(subset=['product_name']).nlargest(5, 'loves_count')
-        st.bar_chart(top_products.set_index('product_name')['loves_count'])
-
-    st.markdown("---")
-    
-    # Membuat 2 kolom untuk Word Cloud
-    st.header('Kata Kunci Populer dalam Ulasan')
-    col_pos, col_neg = st.columns(2)
-
-    with col_pos:
-        st.subheader('Ulasan Positif')
-        # Gabungkan semua teks ulasan positif menjadi satu string besar
-        positif_text = " ".join(review for review in df_filtered[df_filtered['sentimen'] == 'Positif']['comment_clean'].dropna())
+    with col2:
+        st.write("**Word Cloud Ulasan Positif**")
+        positif_text = " ".join(review for review in df_product_filtered[df_product_filtered['sentimen'] == 'Positif']['comment_clean'].dropna())
         if positif_text:
-            wordcloud_pos = WordCloud(width=800, height=400, background_color="white", colormap="Greens").generate(positif_text)
+            wordcloud_pos = WordCloud(width=400, height=300, background_color="white", colormap="Greens").generate(positif_text)
             fig, ax = plt.subplots()
             ax.imshow(wordcloud_pos, interpolation='bilinear')
             ax.axis("off")
             st.pyplot(fig)
         else:
-            st.write("Tidak ada ulasan positif untuk ditampilkan.")
+            st.write("Tidak ada ulasan positif.")
 
-    with col_neg:
-        st.subheader('Ulasan Negatif')
-        negatif_text = " ".join(review for review in df_filtered[df_filtered['sentimen'] == 'Negatif']['comment_clean'].dropna())
+    with col3: 
+        st.write("**Word Cloud Ulasan Negatif**")
+        negatif_text = " ".join(review for review in df_product_filtered[df_product_filtered['sentimen'] == 'Negatif']['comment_clean'].dropna())
         if negatif_text:
-            wordcloud_neg = WordCloud(width=800, height=400, background_color="white", colormap="Reds").generate(negatif_text)
+            wordcloud_neg = WordCloud(width=400, height=300, background_color="white", colormap="Reds").generate(negatif_text)
             fig, ax = plt.subplots()
             ax.imshow(wordcloud_neg, interpolation='bilinear')
             ax.axis("off")
             st.pyplot(fig)
         else:
-            st.write("Tidak ada ulasan negatif untuk ditampilkan.")
+            st.write("Tidak ada ulasan negatif.")
+            
+    st.write("**Top 10 Kata yang Paling Sering Muncul dalam Ulasan Negatif**")
+    negatif_text_for_barchart = " ".join(review for review in df_product_filtered[df_product_filtered['sentimen'] == 'Negatif']['comment_clean'].dropna())
+    if negatif_text_for_barchart:
+        neg_words = negatif_text_for_barchart.split()
+        neg_word_counts = Counter(neg_words).most_common(10)
+        df_neg_words = pd.DataFrame(neg_word_counts, columns=['Kata Kunci', 'Jumlah'])
+        st.bar_chart(df_neg_words.set_index('Kata Kunci'))
+    else:
+        st.write("Tidak ada data untuk ditampilkan.")
 
     st.markdown("---")
+    st.subheader("💬 Telusuri Ulasan Asli")
+    st.dataframe(df_product_filtered[['sentimen', 'text']].rename(columns={'text': 'Teks Asli Komentar'}), height=300)
 
-    # Menampilkan tabel data yang bisa dieksplorasi
-    st.header('Telusuri Data Ulasan')
-    st.dataframe(df_filtered[['brand_name', 'product_name', 'sentimen', 'text']].rename(columns={'text': 'Teks Asli Komentar'}))
+    st.markdown("---")
+    st.header("Kesimpulan Umum Proyek")
+    st.success("""
+    Proyek ini menunjukkan kekuatan penggabungan data terstruktur (produk) dan tidak terstruktur (ulasan) untuk menghasilkan wawasan yang mendalam. 
+    Dengan menganalisis 'suara pelanggan' secara langsung dari YouTube, kita dapat memahami **alasan di balik angka rating**, mengidentifikasi kekuatan spesifik, dan menemukan area perbaikan untuk setiap produk. 
+    Dashboard ini berfungsi sebagai alat bantu pengambilan keputusan berbasis data, memungkinkan strategi produk dan pemasaran yang lebih tajam dan responsif terhadap kebutuhan pasar.
+    """)

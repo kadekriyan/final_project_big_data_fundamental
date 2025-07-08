@@ -20,7 +20,7 @@ YOUTUBE_API_VERSION = "v3"
 INPUT_PRODUK_CSV = 'data/product_clean.csv'
 OUTPUT_KOMENTAR_CSV = 'data/youtube_reviews_raw.csv'
 
-VIDEOS_PER_PRODUCT = 2
+VIDEOS_PER_PRODUCT = 1
 
 def search_youtube_videos(youtube_service, query, max_results=3):
     """Mencari video di YouTube berdasarkan query dan mengembalikan list video ID."""
@@ -54,7 +54,7 @@ def get_all_video_comments(youtube_service, video_id):
         request = youtube_service.commentThreads().list(
             part="snippet",
             videoId=video_id,
-            maxResults=100, # Ambil 100 komentar per request
+            maxResults=20, # Ambil 20 komentar per request
             textFormat="plainText"
         )
         response = request.execute()
@@ -73,7 +73,7 @@ def get_all_video_comments(youtube_service, video_id):
                 request = youtube_service.commentThreads().list(
                     part="snippet",
                     videoId=video_id,
-                    maxResults=100,
+                    maxResults=20,
                     textFormat="plainText",
                     pageToken=response["nextPageToken"]
                 )
